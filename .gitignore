@@ -1,0 +1,22 @@
+# B+ Tree Index - Build artifacts
+*.exe
+*.o
+*.obj
+*.idx
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs (optional - you may want to keep these)
+logs/*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+test.idx
+benchmark.idx
