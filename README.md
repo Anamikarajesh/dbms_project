@@ -6,7 +6,9 @@ A high-performance B+ tree index implementation for database management systems.
 
 - **Disk-based storage** using memory-mapped I/O (`mmap`)
 - **4096-byte page size** optimized for OS page alignment
-- **High fanout** (~509 children per internal node)
+- **High fanout** (~510 children per internal node)
+- **Binary search** in internal nodes (9 comparisons vs 510 linear)
+- **CPU prefetching** for reduced memory latency
 - **Range queries** via linked leaf nodes
 - **Cross-platform** (Windows + Linux/Ubuntu)
 
@@ -133,14 +135,14 @@ for (uint32_t i = 0; i < count; i++) {
 ```
 DBMS_PROJECT/
 ├── src/
-│   ├── bptree.hpp      # B+ tree implementation
-│   ├── page.hpp        # Page structures
-│   ├── page_manager.hpp# Memory-mapped I/O
-│   └── driver.cpp      # Test driver
-├── logs/               # Test logs
-├── report/             # Analysis reports
-├── Makefile            # Build configuration
-└── README.md           # This file
+│   ├── bptree.hpp       # B+ tree implementation
+│   ├── page.hpp         # Page structures with binary search
+│   ├── page_manager.hpp # Memory-mapped I/O with madvise
+│   └── driver.cpp       # Test driver
+├── logs/                # Test logs
+├── report/              # Analysis reports
+├── Makefile             # Build configuration
+└── README.md            # This file
 ```
 
 ## Performance
@@ -152,10 +154,27 @@ DBMS_PROJECT/
 | Search | O(log n) |
 | Range | O(log n + k) |
 
+### Benchmark Results (Optimized)
+
+| Scale | Insert | Read | Range Query |
+|-------|--------|------|-------------|
+| 1K records | 6.2M ops/sec | 111M ops/sec | <0.01ms |
+| 10K records | 4.1M ops/sec | 81M ops/sec | 0.01ms |
+| 100K records | 766K ops/sec | 40M ops/sec | 0.33ms |
+
+### Data Structure Capacities
+
 With 4096-byte pages:
 - **Leaf capacity**: 39 records
-- **Internal capacity**: 509 children
+- **Internal capacity**: 510 children
 - **Tree height for 1M records**: ~3 levels
+
+## Optimizations
+
+1. **Binary search** in internal nodes (log₂ 510 ≈ 9 comparisons)
+2. **CPU prefetching** via `__builtin_prefetch()`
+3. **madvise hints** for kernel page management
+4. **Aggressive compiler flags** (-O3, -flto, -march=native)
 
 ## License
 

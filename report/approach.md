@@ -17,7 +17,7 @@ Implement a disk-based B+ tree index with:
 
 B+ trees are the **gold standard** for disk-based indexing because:
 
-1. **High Fanout** - With 4096-byte pages, internal nodes can hold ~509 children, creating very shallow trees
+1. **High Fanout** - With 4096-byte pages, internal nodes can hold ~510 children, creating very shallow trees
 2. **Sequential Leaf Access** - Leaf nodes are linked, enabling O(n) range scans
 3. **Disk-Optimized** - All data at leaf level, minimizing random I/O for searches
 4. **Balanced** - O(log_m n) guarantees for all operations
@@ -27,8 +27,6 @@ B+ trees are the **gold standard** for disk-based indexing because:
 ## Tech Stack Selection
 
 ### Language: **C++ (C++17)**
-
-**Reasoning**:
 
 | Criterion | C++ Advantage |
 |-----------|---------------|
@@ -50,35 +48,39 @@ B+ trees are the **gold standard** for disk-based indexing because:
 ### Compiler Flags
 
 ```bash
--O3              # Aggressive optimizations
--march=native    # CPU-specific instructions
--flto            # Link-time optimization
--funroll-loops   # Loop unrolling
+-O3                  # Aggressive optimizations
+-march=native        # CPU-specific instructions (SIMD)
+-flto                # Link-time optimization
+-funroll-loops       # Loop unrolling
+-ftree-vectorize     # Auto-vectorization
+-fno-exceptions      # Remove exception handling overhead
+-fno-rtti            # Remove runtime type information
+-fomit-frame-pointer # Free up a register
 ```
 
 ---
 
-## Implementation Strategy
+## Key Optimizations
 
-### Phase 1: Page Layer
-- Define 4096-byte page structure
-- Implement page types: internal nodes, leaf nodes, metadata
-- Create mmap wrapper for file access
+### 1. Binary Search in Internal Nodes
+- Internal nodes have 510 keys
+- Linear search: 510 comparisons worst case
+- Binary search: 9 comparisons worst case (log₂ 510)
 
-### Phase 2: B+ Tree Core
-- Implement recursive search
-- Implement insert with node splitting
-- Implement delete with redistribution/merging
-- Implement range queries via leaf traversal
+### 2. CPU Prefetching
+```cpp
+__builtin_prefetch(ptr, 0, 3);  // Read hint, high locality
+```
+Prefetch next node while processing current node.
 
-### Phase 3: API Integration
-- Expose required API functions
-- Handle edge cases and special requirements
+### 3. Kernel Page Hints
+```cpp
+madvise(data, size, MADV_RANDOM);    // Random access pattern
+madvise(data, size, MADV_WILLNEED);  // Will need this soon
+```
 
-### Phase 4: Optimization
-- Profile with `perf` or `valgrind`
-- Optimize hot paths
-- Reduce cache misses
+### 4. Cache-Aligned Structures
+All page structures aligned to 64-byte cache lines.
 
 ---
 
@@ -91,14 +93,39 @@ Capacity = floor((4096 - 16) / 104) = 39 entries
 
 ### Internal Node (holds keys + child pointers)
 ```
-Capacity = floor((4096 - 16 - 4) / 8) = 509 children
+Capacity = floor((4096 - 12) / 8) = 510 children
 ```
 
 ### Tree Height for 1 Million Records
 ```
-log_509(1,000,000) ≈ 2.2 levels
+log_510(1,000,000) ≈ 2.2 levels
 ```
 Only **3 disk accesses** to find any record!
+
+---
+
+## Implementation Phases
+
+### Phase 1: Page Layer
+- Define 4096-byte page structure
+- Implement page types: internal nodes, leaf nodes, metadata
+- Create mmap wrapper for file access
+
+### Phase 2: B+ Tree Core
+- Implement binary search within nodes
+- Implement insert with node splitting
+- Implement delete with redistribution/merging
+- Implement range queries via leaf traversal
+
+### Phase 3: API Integration
+- Expose required API functions
+- Handle edge cases
+
+### Phase 4: Performance Optimization
+- Binary search for internal nodes
+- CPU prefetching hints
+- Compiler optimization flags
+- Kernel madvise hints
 
 ---
 

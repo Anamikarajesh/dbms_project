@@ -5,7 +5,9 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -Wpedantic
 
 # Release flags (maximum optimization)
-RELEASE_FLAGS = -O3 -march=native -flto -funroll-loops -DNDEBUG
+RELEASE_FLAGS = -O3 -march=native -flto -funroll-loops -DNDEBUG \
+                -ftree-vectorize -fno-exceptions -fno-rtti \
+                -ffast-math -pipe -fomit-frame-pointer
 
 # Debug flags
 DEBUG_FLAGS = -g -O0 -DDEBUG

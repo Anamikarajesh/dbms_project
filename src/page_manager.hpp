@@ -5,7 +5,6 @@
 #include <cstdio>
 #include <string>
 
-
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -31,7 +30,7 @@ private:
   int fd;
 #endif
 
-  static constexpr size_t INITIAL_PAGES = 1024; // Start with 1024 pages (4MB)
+  static constexpr size_t INITIAL_PAGES = 8192; // Start with 8192 pages (32MB)
   static constexpr size_t GROWTH_FACTOR = 2;
 
 public:
@@ -120,6 +119,7 @@ public:
     }
 
     mappedSize = fileCapacity;
+
     mappedData = static_cast<uint8_t *>(
         mmap(nullptr, mappedSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
 
@@ -130,10 +130,8 @@ public:
     }
 
     // PERFORMANCE: Give kernel hints about our access pattern
-    // MADV_RANDOM - we do random access for tree traversal
     madvise(mappedData, mappedSize, MADV_RANDOM);
-    // Prefetch the first page (metadata) which we'll always need
-    madvise(mappedData, PAGE_SIZE, MADV_WILLNEED);
+    madvise(mappedData, PAGE_SIZE * 4, MADV_WILLNEED);
 #endif
 
     // Initialize metadata if new file

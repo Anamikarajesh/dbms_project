@@ -5,6 +5,16 @@
 #include <cstdint>
 #include <cstring>
 
+// SIMD headers for accelerated search
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) ||             \
+    defined(_M_IX86)
+#include <emmintrin.h> // SSE2
+#define HAVE_SSE2 1
+#if defined(__AVX2__)
+#include <immintrin.h> // AVX2
+#define HAVE_AVX2 1
+#endif
+#endif
 
 // =============================================================================
 // PERFORMANCE OPTIMIZATIONS
@@ -224,14 +234,24 @@ struct InternalNode {
     reinterpret_cast<int32_t *>(data)[idx * 2 + 1] = key;
   }
 
-  // OPTIMIZED: Linear search for child index
+  // OPTIMIZED: Binary search for child index
+  // Much faster than linear search for 510 keys: O(log n) ≈ 9 comparisons
   FORCE_INLINE uint32_t findChildIndex(int32_t key) const {
     const uint32_t n = numKeys;
-    for (uint32_t i = 0; i < n; ++i) {
-      if (key < getKey(i))
-        return i;
+
+    if (UNLIKELY(n == 0))
+      return 0;
+
+    // Binary search - about 9 comparisons for 510 keys vs 510 for linear
+    uint32_t lo = 0, hi = n;
+    while (lo < hi) {
+      uint32_t mid = lo + ((hi - lo) >> 1);
+      if (key < getKey(mid))
+        hi = mid;
+      else
+        lo = mid + 1;
     }
-    return n;
+    return lo;
   }
 
   FORCE_INLINE bool isFull() const { return numKeys >= INTERNAL_MAX_KEYS; }

@@ -119,6 +119,7 @@ public:
   }
 
   // API: readRangeData(lowerKey, upperKey, n) - returns array of tuples
+  // OPTIMIZED: Prefetch next leaf during scan
   std::vector<uint8_t *> readRangeData(int32_t lowerKey, int32_t upperKey,
                                        uint32_t &n) {
     std::vector<uint8_t *> results;
@@ -128,14 +129,24 @@ public:
     if (!meta || !meta->isValid() || meta->rootPageId == INVALID_PAGE)
       return results;
 
+    // Reserve estimated capacity to avoid reallocations
+    results.reserve(128);
+
     // Find starting leaf
     uint32_t leafId = findLeaf(lowerKey);
 
     while (leafId != INVALID_PAGE) {
       LeafNode *leaf = pm.getLeafNode(leafId);
 
+      // Prefetch next leaf while processing current one
+      uint32_t nextLeafId = leaf->nextLeaf;
+      if (nextLeafId != INVALID_PAGE) {
+        PREFETCH_READ(pm.getPage(nextLeafId));
+      }
+
+      const int32_t *leafKeys = leaf->keys();
       for (uint32_t i = 0; i < leaf->numKeys; i++) {
-        int32_t k = leaf->keys()[i];
+        int32_t k = leafKeys[i];
         if (k > upperKey) {
           n = results.size();
           return results;
@@ -145,7 +156,7 @@ public:
         }
       }
 
-      leafId = leaf->nextLeaf;
+      leafId = nextLeafId;
     }
 
     n = results.size();
@@ -176,7 +187,7 @@ private:
       uint32_t childIdx = node->findChildIndex(key);
       pageId = node->getChild(childIdx);
 
-      // Prefetch next node while we still have this one in cache
+      // Prefetch next node - safe since we're only reading
       PREFETCH_READ(pm.getPage(pageId));
     }
   }

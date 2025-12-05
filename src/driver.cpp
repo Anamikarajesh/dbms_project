@@ -159,7 +159,8 @@ bool testBulkInsert(BPlusTree &tree, Logger &log, int count) {
       std::chrono::duration_cast<std::chrono::microseconds>(end - start)
           .count();
   double durationMs = durationUs / 1000.0;
-  double opsPerSec = (count * 1000000.0) / std::max(1LL, durationUs);
+  double opsPerSec =
+      (count * 1000000.0) / std::max(1LL, static_cast<long long>(durationUs));
 
   log.log("PASS: Inserted " + std::to_string(count) + " records in " +
           formatTime(durationMs) + "ms (" + formatOps(opsPerSec) + " ops/sec)");
@@ -189,7 +190,8 @@ bool testRandomReads(BPlusTree &tree, Logger &log, int count, int maxKey) {
       std::chrono::duration_cast<std::chrono::microseconds>(end - start)
           .count();
   double durationMs = durationUs / 1000.0;
-  double opsPerSec = (count * 1000000.0) / std::max(1LL, durationUs);
+  double opsPerSec =
+      (count * 1000000.0) / std::max(1LL, static_cast<long long>(durationUs));
 
   log.log("PASS: " + std::to_string(found) + "/" + std::to_string(count) +
           " reads successful in " + formatTime(durationMs) + "ms (" +
@@ -271,7 +273,8 @@ void runBenchmark(BPlusTree &tree, Logger &log) {
         std::chrono::duration_cast<std::chrono::microseconds>(insertEnd - start)
             .count();
     double insertMs = insertUs / 1000.0;
-    double insertOps = (size * 1000000.0) / std::max(1LL, insertUs);
+    double insertOps =
+        (size * 1000000.0) / std::max(1LL, static_cast<long long>(insertUs));
 
     // Read benchmark (sequential)
     start = std::chrono::high_resolution_clock::now();
@@ -283,7 +286,8 @@ void runBenchmark(BPlusTree &tree, Logger &log) {
         std::chrono::duration_cast<std::chrono::microseconds>(readEnd - start)
             .count();
     double readMs = readUs / 1000.0;
-    double readOps = (size * 1000000.0) / std::max(1LL, readUs);
+    double readOps =
+        (size * 1000000.0) / std::max(1LL, static_cast<long long>(readUs));
 
     // Range query benchmark
     start = std::chrono::high_resolution_clock::now();
