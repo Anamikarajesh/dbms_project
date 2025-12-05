@@ -68,9 +68,9 @@ Pages are 4096-byte aligned to match OS memory page size.
 
 | Metric | 1K Records | 10K Records | 100K Records |
 |--------|------------|-------------|--------------|
-| Insert time | <1ms | 5ms | 232ms |
-| Insert throughput | >1M ops/sec | 2M ops/sec | 431K ops/sec |
-| Read time | <1ms | 2ms | 13ms |
-| Read throughput | >1M ops/sec | 5M ops/sec | 7.7M ops/sec |
-| Range query (10%) | 7µs | 49µs | 176µs |
+| Insert time | 0.25ms | 3.50ms | 174.91ms |
+| Insert throughput | 3.95M ops/sec | 2.85M ops/sec | 571.72K ops/sec |
+| Read time | 0.05ms | 1.59ms | 11.14ms |
+| Read throughput | 19.23M ops/sec | 6.30M ops/sec | 8.98M ops/sec |
+| Range query (10%) | 0.01ms | 0.05ms | 0.16ms |
 | Index file size | ~100KB | ~1MB | ~10MB |
