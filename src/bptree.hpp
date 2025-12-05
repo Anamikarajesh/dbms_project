@@ -159,7 +159,7 @@ public:
   }
 
 private:
-  // Find leaf node containing key
+  // Find leaf node containing key - OPTIMIZED with prefetching
   uint32_t findLeaf(int32_t key) {
     MetadataPage *meta = pm.getMetadata();
     uint32_t pageId = meta->rootPageId;
@@ -168,13 +168,16 @@ private:
       void *page = pm.getPage(pageId);
       PageType type = *static_cast<PageType *>(page);
 
-      if (type == PageType::LEAF) {
+      if (LIKELY(type == PageType::LEAF)) {
         return pageId;
       }
 
       InternalNode *node = static_cast<InternalNode *>(page);
       uint32_t childIdx = node->findChildIndex(key);
       pageId = node->getChild(childIdx);
+
+      // Prefetch next node while we still have this one in cache
+      PREFETCH_READ(pm.getPage(pageId));
     }
   }
 
