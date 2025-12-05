@@ -1,85 +1,94 @@
 # Performance Analysis
 
-## Theoretical Complexity
+## Complexity
 
-| Operation | Average Case | Worst Case | Notes |
-|-----------|--------------|------------|-------|
-| Insert | O(log n) | O(log n) | May trigger splits |
-| Delete | O(log n) | O(log n) | May trigger merges |
-| Search | O(log n) | O(log n) | Always balanced |
-| Range Query | O(log n + k) | O(log n + k) | k = result size |
+All operations are O(log n) in tree height:
 
----
+| Operation | Time | Notes |
+|-----------|------|-------|
+| Insert | O(log n) | May trigger node splits |
+| Delete | O(log n) | May trigger merges |
+| Search | O(log n) | Single traversal |
+| Range | O(log n + k) | k = result count |
 
-## Disk I/O Analysis
+## Tree Structure
 
-### Page Access Per Operation
+With 4KB pages:
 
-| Operation | Best Case | Typical | Worst Case |
-|-----------|-----------|---------|------------|
-| Search | 1 (cached) | 2-3 | log_m(n) |
-| Insert | 2-3 | 3-4 | 2*log_m(n) |
-| Delete | 2-3 | 3-4 | 2*log_m(n) |
-| Range(k) | log_m(n) | log_m(n) + k/39 | Full scan |
-
-### Tree Height vs Data Size
-
-| Records | Leaf Nodes | Tree Height | Max I/O Per Search |
-|---------|------------|-------------|-------------------|
-| 1,000 | 26 | 2 | 2 |
-| 10,000 | 257 | 2 | 2 |
-| 100,000 | 2,565 | 3 | 3 |
-| 1,000,000 | 25,642 | 3 | 3 |
-| 10,000,000 | 256,411 | 4 | 4 |
-
----
-
-## Memory-Mapped I/O Benefits
-
-1. **Reduced System Calls**: Traditional I/O requires explicit `read()`/`write()` syscalls for each page access
-2. **OS Page Cache**: Hot pages automatically cached by kernel
-3. **Lazy Loading**: Pages loaded on-demand via page faults
-4. **Write Coalescing**: Multiple writes to same page merged before disk sync
-
----
-
-## Optimization Techniques Applied
-
-### 1. Binary Search for Internal Nodes
-Replaced linear search with O(log m) binary search in internal nodes (510 keys).
-- Linear: 510 comparisons worst case
-- Binary: 9 comparisons worst case (log₂ 510)
-
-### 2. CPU Prefetching
-Used `__builtin_prefetch()` to hint CPU to load next node during tree traversal, hiding memory latency.
-
-### 3. madvise Kernel Hints
-- `MADV_RANDOM`: Optimized for random access patterns
-- `MADV_WILLNEED`: Pre-fetch metadata and root pages
-
-### 4. Aggressive Compiler Optimizations
-```bash
--O3                 # Maximum optimization
--march=native       # CPU-specific SIMD
--flto               # Link-time optimization
--ftree-vectorize    # Auto-vectorization
--fno-exceptions     # Remove exception overhead
--fomit-frame-pointer # Free up register
+```
+Records     Leaves    Height    I/O per lookup
+─────────────────────────────────────────────
+1,000       26        2         2
+10,000      257       2         2
+100,000     2,565     3         3
+1,000,000   25,642    3         3
 ```
 
-### 5. Memory Layout
-- Cache-aligned structures (64-byte alignment)
-- Contiguous key arrays for cache locality
-- Pre-allocated result vectors for range queries
+Even with 1M records, we only need 3 disk reads.
 
----
+## Why mmap Works
 
-## Benchmark Results (Optimized)
+Traditional I/O:
+```
+read(fd, buf, 4096);  // Syscall
+memcpy(dest, buf);    // Extra copy
+```
 
-| Metric | 1K Records | 10K Records | 100K Records |
-|--------|------------|-------------|--------------|
-| Insert time | 0.16ms | 2.45ms | 130.62ms |
-| Insert throughput | **6.2M ops/sec** | **4.1M ops/sec** | **766K ops/sec** |
-| Read time | 0.01ms | 0.12ms | 2.49ms |
-| Read throughput | **111M ops/sec** | **81M ops/sec** | **40M ops/sec** |
-| Range query (10%) | 0.00ms | 0.01ms | 0.33ms |
+Memory-mapped I/O:
+```
+data[offset]  // Direct access, kernel handles paging
+```
+
+Benefits:
+1. No explicit syscalls per page
+2. OS page cache keeps hot pages in RAM
+3. Lazy loading via page faults
+4. Writes coalesced before disk sync
+
+## Optimizations Applied
+
+### Binary Search
+```
+Linear:   510 comparisons (worst case)
+Binary:   9 comparisons (log₂ 510)
+```
+
+### Prefetching
+```cpp
+// While processing node N, prefetch node N+1
+__builtin_prefetch(next_ptr, 0, 3);
+```
+
+### Compiler Flags
+```
+-O3                 # Aggressive optimization
+-march=native       # CPU-specific SIMD
+-flto               # Cross-file optimization
+-ftree-vectorize    # Auto SIMD
+-fno-exceptions     # Skip exception tables
+```
+
+### Kernel Hints
+```cpp
+madvise(ptr, size, MADV_RANDOM);    // Random access
+madvise(ptr, size, MADV_WILLNEED);  // Prefetch
+```
+
+## Benchmark Results
+
+After optimizations:
+
+```
+┌────────────┬─────────────────┬────────────────┬───────────┐
+│   Scale    │     Insert      │      Read      │   Range   │
+├────────────┼─────────────────┼────────────────┼───────────┤
+│  1K keys   │  6.2M ops/sec   │  111M ops/sec  │  <0.01ms  │
+│ 10K keys   │  4.1M ops/sec   │   81M ops/sec  │   0.01ms  │
+│ 100K keys  │  766K ops/sec   │   40M ops/sec  │   0.33ms  │
+└────────────┴─────────────────┴────────────────┴───────────┘
+```
+
+Key observations:
+- Read throughput scales well (O(log n) tree height)
+- Insert slows at 100K due to more node splits
+- Range queries remain fast due to linked leaves

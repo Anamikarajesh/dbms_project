@@ -1,181 +1,155 @@
-# B+ Tree Disk-Based Index
+# bptree - Disk-Based B+ Tree Index
 
-A high-performance B+ tree index implementation for database management systems.
+```
+     ____  ____  _
+    | __ )|  _ \| |_ _ __ ___  ___
+    |  _ \| |_) | __| '__/ _ \/ _ \
+    | |_) |  __/| |_| | |  __/  __/
+    |____/|_|    \__|_|  \___|\___|
 
-## Features
-
-- **Disk-based storage** using memory-mapped I/O (`mmap`)
-- **4096-byte page size** optimized for OS page alignment
-- **High fanout** (~510 children per internal node)
-- **Binary search** in internal nodes (9 comparisons vs 510 linear)
-- **CPU prefetching** for reduced memory latency
-- **Range queries** via linked leaf nodes
-- **Cross-platform** (Windows + Linux/Ubuntu)
-
-## Prerequisites
-
-### Ubuntu/Linux
-```bash
-sudo apt-get update
-sudo apt-get install g++ make
+    High-Performance Database Indexing
 ```
 
-### Windows
-- MinGW-w64 with g++ (or MSVC)
-- GNU Make (via MSYS2 or similar)
+A fast, memory-mapped B+ tree implementation built for the DBMS course assignment.
+Optimized for maximum throughput on disk-resident datasets.
 
-## Compilation
+## Quick Start
 
-### Quick Start
 ```bash
-# Build optimized release version
+# Build
 make
 
-# Or explicitly
-make release
-```
-
-### Build Targets
-| Command | Description |
-|---------|-------------|
-| `make` | Build release version (default) |
-| `make release` | Build with -O3 optimizations |
-| `make debug` | Build with debug symbols |
-| `make clean` | Remove build artifacts |
-
-## Execution
-
-### Run Tests
-```bash
+# Run tests
 ./bptree_driver
-```
 
-### Run Benchmarks
-```bash
+# Benchmark
 ./bptree_driver --benchmark
 ```
 
-## API Documentation
+## Requirements
 
-### writeData(key, data)
-Inserts or updates a key-value pair in the index.
+- **OS:** Ubuntu/Linux (tested on Ubuntu 22.04)
+- **Compiler:** g++ with C++17 support
+- **Build:** GNU Make
 
-**Parameters:**
-- `key` (int32_t): The integer key
-- `data` (uint8_t*): Pointer to 100-byte tuple data
-
-**Returns:** `true` (1) on success, `false` (0) on failure
-
-**Example:**
-```cpp
-BPlusTree tree;
-tree.open("index.idx");
-
-uint8_t data[100] = {0};
-// Fill data...
-bool success = tree.writeData(42, data);
+```bash
+sudo apt install g++ make
 ```
 
----
+## Building
 
-### deleteData(key)
-Deletes a key from the index.
+| Target | Command | Description |
+|--------|---------|-------------|
+| Release | `make` | Optimized build (-O3) |
+| Debug | `make debug` | With symbols |
+| Clean | `make clean` | Remove artifacts |
 
-**Parameters:**
-- `key` (int32_t): The key to delete
+## Benchmarks
 
-**Returns:** `true` (1) if deleted, `false` (0) if key not found
+Tested on a standard Ubuntu desktop:
 
-**Example:**
-```cpp
-bool deleted = tree.deleteData(42);
+```
+┌──────────────┬────────────────┬───────────────┬─────────────┐
+│    Scale     │     Insert     │     Read      │    Range    │
+├──────────────┼────────────────┼───────────────┼─────────────┤
+│   1K keys    │  6.2M ops/sec  │ 111M ops/sec  │   <0.01ms   │
+│  10K keys    │  4.1M ops/sec  │  81M ops/sec  │    0.01ms   │
+│ 100K keys    │  766K ops/sec  │  40M ops/sec  │    0.33ms   │
+└──────────────┴────────────────┴───────────────┴─────────────┘
 ```
 
----
+## API
 
-### readData(key)
-Searches for a key and returns the associated data.
+### Write
 
-**Parameters:**
-- `key` (int32_t): The key to search for
-
-**Returns:** Pointer to 100-byte tuple data, or `NULL` (0) if not found
-
-**Example:**
 ```cpp
-const uint8_t* result = tree.readData(42);
-if (result) {
-    // Use data...
+bool writeData(int32_t key, const uint8_t* data);
+```
+
+Insert or update a 100-byte tuple. Returns `true` on success.
+
+### Read
+
+```cpp
+const uint8_t* readData(int32_t key);
+```
+
+Lookup a key. Returns pointer to data or `nullptr` if not found.
+
+### Delete
+
+```cpp
+bool deleteData(int32_t key);
+```
+
+Remove a key. Returns `true` if key existed.
+
+### Range Query
+
+```cpp
+std::vector<uint8_t*> readRangeData(int32_t lo, int32_t hi, uint32_t& count);
+```
+
+Fetch all tuples in [lo, hi]. Count returned via reference.
+
+## Usage Example
+
+```cpp
+#include "bptree.hpp"
+
+int main() {
+    BPlusTree tree;
+    tree.open("myindex.idx");
+
+    // Insert
+    uint8_t data[100] = {0};
+    tree.writeData(42, data);
+
+    // Read
+    auto result = tree.readData(42);
+    if (result) { /* found */ }
+
+    // Range
+    uint32_t n;
+    auto range = tree.readRangeData(1, 100, n);
+    // n contains result count
+
+    tree.close();
+    return 0;
 }
 ```
 
----
-
-### readRangeData(lowerKey, upperKey, n)
-Returns all tuples with keys in the range [lowerKey, upperKey].
-
-**Parameters:**
-- `lowerKey` (int32_t): Lower bound (inclusive)
-- `upperKey` (int32_t): Upper bound (inclusive)
-- `n` (uint32_t&): Output parameter for result count
-
-**Returns:** Array of tuple pointers, or `NULL` (0) if no keys in range
-
-**Example:**
-```cpp
-uint32_t count;
-auto results = tree.readRangeData(10, 50, count);
-for (uint32_t i = 0; i < count; i++) {
-    // Process results[i]...
-}
-```
-
-## File Structure
+## Project Layout
 
 ```
-DBMS_PROJECT/
+.
 ├── src/
-│   ├── bptree.hpp       # B+ tree implementation
-│   ├── page.hpp         # Page structures with binary search
-│   ├── page_manager.hpp # Memory-mapped I/O with madvise
-│   └── driver.cpp       # Test driver
-├── logs/                # Test logs
-├── report/              # Analysis reports
-├── Makefile             # Build configuration
-└── README.md            # This file
+│   ├── bptree.hpp        # Core B+ tree logic
+│   ├── page.hpp          # Node structures
+│   ├── page_manager.hpp  # mmap wrapper
+│   └── driver.cpp        # Tests & benchmarks
+├── report/
+│   ├── approach.md       # Design decisions
+│   ├── analysis.md       # Performance analysis
+│   └── conclusion.md     # Summary
+├── Makefile
+└── README.md
 ```
 
-## Performance
+## Technical Details
 
-| Operation | Complexity |
-|-----------|------------|
-| Insert | O(log n) |
-| Delete | O(log n) |
-| Search | O(log n) |
-| Range | O(log n + k) |
+- **Page size:** 4096 bytes (OS page aligned)
+- **Leaf capacity:** 39 tuples per node
+- **Internal fanout:** 510 children per node
+- **Tree height:** ~3 levels for 1M records
 
-### Benchmark Results (Optimized)
+### Key Optimizations
 
-| Scale | Insert | Read | Range Query |
-|-------|--------|------|-------------|
-| 1K records | 6.2M ops/sec | 111M ops/sec | <0.01ms |
-| 10K records | 4.1M ops/sec | 81M ops/sec | 0.01ms |
-| 100K records | 766K ops/sec | 40M ops/sec | 0.33ms |
+1. Binary search in internal nodes (9 vs 510 comparisons)
+2. CPU prefetch hints during traversal
+3. madvise for kernel page management
+4. Aggressive compiler optimizations
 
-### Data Structure Capacities
+## Author
 
-With 4096-byte pages:
-- **Leaf capacity**: 39 records
-- **Internal capacity**: 510 children
-- **Tree height for 1M records**: ~3 levels
-
-## Optimizations
-
-1. **Binary search** in internal nodes (log₂ 510 ≈ 9 comparisons)
-2. **CPU prefetching** via `__builtin_prefetch()`
-3. **madvise hints** for kernel page management
-4. **Aggressive compiler flags** (-O3, -flto, -march=native)
-
-## License
-
-Academic project - Amit Kumar Dhar, DBMS Assignment 2025
+Amit Kumar Dhar — DBMS Assignment 2025

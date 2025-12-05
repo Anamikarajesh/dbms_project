@@ -1,148 +1,110 @@
-# B+ Tree Implementation Approach
+# Design Approach
 
-## Problem Statement Summary
+## The Problem
 
-Implement a disk-based B+ tree index with:
-- Integer keys (4 bytes)
-- Fixed 100-byte tuples
-- 4096-byte page size
-- Memory-mapped I/O (or custom buffer manager)
-- APIs: `writeData`, `deleteData`, `readData`, `readRangeData`
+Build a disk-based B+ tree index that:
+- Stores integer keys with 100-byte tuples
+- Uses 4KB pages
+- Supports insert, delete, point query, and range query
+- Must be fast — marks depend on runtime
 
-**Goal**: Fastest runtime among all submissions.
+## Why B+ Trees?
 
----
+Simple: they're the industry standard for disk-based indexing.
 
-## Why B+ Tree?
+```
+                    [Root]
+                   /      \
+            [Internal]  [Internal]
+             /  |  \      /  |  \
+          [L1][L2][L3] [L4][L5][L6]  ← Linked leaves
+```
 
-B+ trees are the **gold standard** for disk-based indexing because:
+With 4KB pages:
+- Internal nodes hold **510 children**
+- Leaves hold **39 tuples**
+- 1 million records fit in **3 tree levels**
 
-1. **High Fanout** - With 4096-byte pages, internal nodes can hold ~510 children, creating very shallow trees
-2. **Sequential Leaf Access** - Leaf nodes are linked, enabling O(n) range scans
-3. **Disk-Optimized** - All data at leaf level, minimizing random I/O for searches
-4. **Balanced** - O(log_m n) guarantees for all operations
+That's just 3 disk reads to find any record.
 
----
+## Tech Stack
 
-## Tech Stack Selection
+**Language: C++17**
 
-### Language: **C++ (C++17)**
+We need raw speed. C++ gives us:
+- Zero-cost abstractions
+- Direct memory control
+- Native SIMD via `-march=native`
 
-| Criterion | C++ Advantage |
-|-----------|---------------|
-| **Raw Speed** | Compiles to native machine code with zero-cost abstractions |
-| **Memory Control** | Direct pointer manipulation for mmap integration |
-| **Compiler Optimizations** | `-O3 -march=native -flto` for maximum performance |
-| **I/O Efficiency** | Direct `mmap()` syscall support |
-| **Portability** | Compiles on any Ubuntu system with `g++` |
+**Disk I/O: mmap**
 
-### Disk Access: **Memory-Mapped I/O (mmap)**
+Memory-mapped files let us treat the index like RAM:
 
-**Why mmap over traditional I/O?**
+```cpp
+data = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+```
 
-1. **No explicit read/write calls** - OS handles page faults automatically
-2. **Kernel page cache utilization** - Frequently accessed pages stay in RAM
-3. **Zero-copy access** - Data accessed directly from kernel buffers
-4. **Simplified code** - Pages accessed as if in memory
+The kernel handles paging automatically. No explicit read/write calls.
 
-### Compiler Flags
+## Key Design Decisions
+
+### 1. Binary Search in Internal Nodes
+
+Internal nodes have 510 keys. Linear search = 510 comparisons worst case.
+
+With binary search: **9 comparisons max** (log₂ 510).
+
+This is a 50x improvement for every tree traversal.
+
+### 2. CPU Prefetching
+
+Modern CPUs can fetch data ahead of time:
+
+```cpp
+__builtin_prefetch(next_node, 0, 3);  // Read, high locality
+```
+
+We prefetch the next node while processing the current one.
+Hides memory latency.
+
+### 3. Kernel Hints
+
+Tell the OS about our access patterns:
+
+```cpp
+madvise(data, size, MADV_RANDOM);     // We jump around
+madvise(data, size, MADV_WILLNEED);   // Prefetch these pages
+```
+
+### 4. Compiler Flags
 
 ```bash
--O3                  # Aggressive optimizations
--march=native        # CPU-specific instructions (SIMD)
+-O3                  # Max optimization
+-march=native        # Use CPU's SIMD
 -flto                # Link-time optimization
--funroll-loops       # Loop unrolling
--ftree-vectorize     # Auto-vectorization
--fno-exceptions      # Remove exception handling overhead
--fno-rtti            # Remove runtime type information
+-fno-exceptions      # Skip exception tables
 -fomit-frame-pointer # Free up a register
 ```
 
----
-
-## Key Optimizations
-
-### 1. Binary Search in Internal Nodes
-- Internal nodes have 510 keys
-- Linear search: 510 comparisons worst case
-- Binary search: 9 comparisons worst case (log₂ 510)
-
-### 2. CPU Prefetching
-```cpp
-__builtin_prefetch(ptr, 0, 3);  // Read hint, high locality
-```
-Prefetch next node while processing current node.
-
-### 3. Kernel Page Hints
-```cpp
-madvise(data, size, MADV_RANDOM);    // Random access pattern
-madvise(data, size, MADV_WILLNEED);  // Will need this soon
-```
-
-### 4. Cache-Aligned Structures
-All page structures aligned to 64-byte cache lines.
-
----
-
-## Key Data Structures
-
-### Leaf Node (holds keys + data)
-```
-Capacity = floor((4096 - 16) / 104) = 39 entries
-```
-
-### Internal Node (holds keys + child pointers)
-```
-Capacity = floor((4096 - 12) / 8) = 510 children
-```
-
-### Tree Height for 1 Million Records
-```
-log_510(1,000,000) ≈ 2.2 levels
-```
-Only **3 disk accesses** to find any record!
-
----
-
 ## Implementation Phases
 
-### Phase 1: Page Layer
-- Define 4096-byte page structure
-- Implement page types: internal nodes, leaf nodes, metadata
-- Create mmap wrapper for file access
-
-### Phase 2: B+ Tree Core
-- Implement binary search within nodes
-- Implement insert with node splitting
-- Implement delete with redistribution/merging
-- Implement range queries via leaf traversal
-
-### Phase 3: API Integration
-- Expose required API functions
-- Handle edge cases
-
-### Phase 4: Performance Optimization
-- Binary search for internal nodes
-- CPU prefetching hints
-- Compiler optimization flags
-- Kernel madvise hints
-
----
+1. **Page layer** — Define 4KB structures, mmap wrapper
+2. **Tree core** — Insert, delete, search with splitting
+3. **API layer** — Expose writeData, readData, etc.
+4. **Optimization** — Binary search, prefetch, compiler flags
 
 ## Alternatives Considered
 
-| Option | Speed | Complexity | Memory Safety | Decision |
-|--------|-------|------------|---------------|----------|
-| Python | ❌ Slow | ✅ Easy | ✅ Safe | Rejected |
-| Rust | ✅ Fast | ⚠️ Medium | ✅ Safe | Backup |
-| Java | ⚠️ Medium | ✅ Easy | ✅ Safe | Rejected |
-| **C++** | ✅ Fastest | ⚠️ Medium | ⚠️ Manual | **Selected** |
+| Language | Speed | Why not? |
+|----------|-------|----------|
+| Python | Slow | 100x slower than C++ |
+| Java | Medium | JVM overhead |
+| Rust | Fast | Higher complexity |
 
----
+C++ wins for raw performance with mmap.
 
 ## Risk Mitigation
 
-1. **Memory Leaks** → Use RAII patterns, smart pointers where safe
-2. **Corruption** → Sync mmap after critical writes
-3. **Portability** → Test on Ubuntu before submission
-4. **Edge Cases** → Comprehensive test suite in driver program
+- **Memory safety:** RAII patterns, careful pointer handling
+- **Data corruption:** msync after critical writes
+- **Portability:** Tested on Ubuntu before submission
