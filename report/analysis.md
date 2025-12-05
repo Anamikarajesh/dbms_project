@@ -1,94 +1,53 @@
 # Performance Analysis
 
+## Runtime Results
+
+### Final Benchmark (100K Records)
+
+| Operation | Runtime | Throughput |
+|-----------|---------|------------|
+| **Insert** | **106.57 ms** | 938K ops/sec |
+| **Read** | **1.82 ms** | 55M ops/sec |
+| **Range** | **0.12 ms** | 10K results |
+
+### All Scales
+
+```
+┌──────────────┬─────────────┬────────────┬───────────┐
+│    Scale     │   Insert    │    Read    │   Range   │
+├──────────────┼─────────────┼────────────┼───────────┤
+│   1K keys    │   0.24 ms   │   0.01 ms  │  <0.01 ms │
+│  10K keys    │   2.47 ms   │   0.11 ms  │   0.01 ms │
+│ 100K keys    │  106.57 ms  │   1.82 ms  │   0.12 ms │
+└──────────────┴─────────────┴────────────┴───────────┘
+```
+
+---
+
 ## Complexity
 
-All operations are O(log n) in tree height:
+| Operation | Complexity |
+|-----------|------------|
+| Insert | O(log n) |
+| Delete | O(log n) |
+| Search | O(log n) |
+| Range | O(log n + k) |
 
-| Operation | Time | Notes |
-|-----------|------|-------|
-| Insert | O(log n) | May trigger node splits |
-| Delete | O(log n) | May trigger merges |
-| Search | O(log n) | Single traversal |
-| Range | O(log n + k) | k = result count |
+---
+
+## Optimizations
+
+1. **AVX2 SIMD** - 8 key comparisons per instruction
+2. **Binary search** - 9 comparisons for 510 keys
+3. **mmap** - Zero-copy disk access
+4. **Prefetching** - Hide memory latency
+5. **Compiler flags** - `-O3 -march=native -flto`
+
+---
 
 ## Tree Structure
 
-With 4KB pages:
-
-```
-Records     Leaves    Height    I/O per lookup
-─────────────────────────────────────────────
-1,000       26        2         2
-10,000      257       2         2
-100,000     2,565     3         3
-1,000,000   25,642    3         3
-```
-
-Even with 1M records, we only need 3 disk reads.
-
-## Why mmap Works
-
-Traditional I/O:
-```
-read(fd, buf, 4096);  // Syscall
-memcpy(dest, buf);    // Extra copy
-```
-
-Memory-mapped I/O:
-```
-data[offset]  // Direct access, kernel handles paging
-```
-
-Benefits:
-1. No explicit syscalls per page
-2. OS page cache keeps hot pages in RAM
-3. Lazy loading via page faults
-4. Writes coalesced before disk sync
-
-## Optimizations Applied
-
-### Binary Search
-```
-Linear:   510 comparisons (worst case)
-Binary:   9 comparisons (log₂ 510)
-```
-
-### Prefetching
-```cpp
-// While processing node N, prefetch node N+1
-__builtin_prefetch(next_ptr, 0, 3);
-```
-
-### Compiler Flags
-```
--O3                 # Aggressive optimization
--march=native       # CPU-specific SIMD
--flto               # Cross-file optimization
--ftree-vectorize    # Auto SIMD
--fno-exceptions     # Skip exception tables
-```
-
-### Kernel Hints
-```cpp
-madvise(ptr, size, MADV_RANDOM);    // Random access
-madvise(ptr, size, MADV_WILLNEED);  // Prefetch
-```
-
-## Benchmark Results
-
-After optimizations:
-
-```
-┌────────────┬─────────────────┬────────────────┬───────────┐
-│   Scale    │     Insert      │      Read      │   Range   │
-├────────────┼─────────────────┼────────────────┼───────────┤
-│  1K keys   │  6.2M ops/sec   │  111M ops/sec  │  <0.01ms  │
-│ 10K keys   │  4.1M ops/sec   │   81M ops/sec  │   0.01ms  │
-│ 100K keys  │  766K ops/sec   │   40M ops/sec  │   0.33ms  │
-└────────────┴─────────────────┴────────────────┴───────────┘
-```
-
-Key observations:
-- Read throughput scales well (O(log n) tree height)
-- Insert slows at 100K due to more node splits
-- Range queries remain fast due to linked leaves
+- **Page size**: 4096 bytes
+- **Leaf capacity**: 39 tuples
+- **Internal fanout**: 510 children
+- **Height for 1M records**: 3 levels
