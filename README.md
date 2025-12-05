@@ -87,4 +87,4 @@ vector<uint8_t*> readRangeData(int32_t lo, int32_t hi, uint32_t& n);  // Range
 
 ---
 
-*Amit Kumar Dhar — DBMS Assignment 2025*
+*DBMS Assignment 2025*
