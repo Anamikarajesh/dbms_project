@@ -128,14 +128,42 @@ struct LeafNode {
     return values() + idx * DATA_SIZE;
   }
 
-  // OPTIMIZED: Linear search beats binary search for 39 entries
-  // - Sequential memory access enables CPU prefetching
-  // - No branch mispredictions from binary search comparisons
-  // - Research shows linear wins for n < 64 with int32_t keys
+  // SIMD-OPTIMIZED: AVX2 search for 39 leaf keys
+  // Compare 8 int32_t keys per instruction
   FORCE_INLINE uint32_t findPosition(int32_t key) const {
     const int32_t *k = keys();
     const uint32_t n = numKeys;
 
+    if (UNLIKELY(n == 0))
+      return 0;
+
+#ifdef HAVE_AVX2
+    // AVX2: Compare 8 keys at once
+    __m256i target = _mm256_set1_epi32(key);
+    uint32_t i = 0;
+
+    // Process 8 keys at a time (39 keys = 4 full iterations + 7 remaining)
+    for (; i + 8 <= n; i += 8) {
+      __m256i keys_vec =
+          _mm256_loadu_si256(reinterpret_cast<const __m256i *>(k + i));
+      // Compare: keys[i] >= target (equivalent to !(keys[i] < target))
+      __m256i cmp = _mm256_cmpgt_epi32(keys_vec, target);
+      __m256i eq = _mm256_cmpeq_epi32(keys_vec, target);
+      __m256i ge = _mm256_or_si256(cmp, eq);
+      int mask = _mm256_movemask_ps(_mm256_castsi256_ps(ge));
+
+      if (mask != 0) {
+        return i + __builtin_ctz(mask);
+      }
+    }
+
+    // Scalar cleanup for remaining keys
+    for (; i < n; ++i) {
+      if (k[i] >= key)
+        return i;
+    }
+    return n;
+#else
     // Prefetch keys into cache
     PREFETCH_READ(k);
 
@@ -145,6 +173,7 @@ struct LeafNode {
         return i;
     }
     return n;
+#endif
   }
 
   // Insert at position with memmove optimization

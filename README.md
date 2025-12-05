@@ -52,11 +52,31 @@ Tested on a standard Ubuntu desktop:
 ┌──────────────┬────────────────┬───────────────┬─────────────┐
 │    Scale     │     Insert     │     Read      │    Range    │
 ├──────────────┼────────────────┼───────────────┼─────────────┤
-│   1K keys    │  6.2M ops/sec  │ 111M ops/sec  │   <0.01ms   │
-│  10K keys    │  4.1M ops/sec  │  81M ops/sec  │    0.01ms   │
-│ 100K keys    │  766K ops/sec  │  40M ops/sec  │    0.33ms   │
+│   1K keys    │  4.1M ops/sec  │  62M ops/sec  │   <0.01ms   │
+│  10K keys    │  3.2M ops/sec  │  50M ops/sec  │    0.01ms   │
+│ 100K keys    │  592K ops/sec  │  43M ops/sec  │    0.22ms   │
 └──────────────┴────────────────┴───────────────┴─────────────┘
 ```
+
+## Comparison: Main vs Experimental
+
+| Feature | Main Implementation | Experimental |
+|---------|---------------------|--------------|
+| **Internal node search** | Binary search (33ns) | SIMD AVX2 (23ns) |
+| **Speedup** | 2.6x over linear | 3.3x over linear |
+| **Memory allocation** | Standard mmap | HugePages option |
+| **TLB efficiency** | 4KB pages | 2MB pages |
+| **Prefetching** | Single-level | Multi-level |
+
+### Search Algorithm Performance (510 keys)
+
+```
+Linear:  77 ns/search  (baseline)
+Binary:  36 ns/search  (2.1x faster) ← Current
+SIMD:    23 ns/search  (3.3x faster) ← Experimental
+```
+
+**Potential gain from SIMD: ~35% faster reads**
 
 ## API
 
