@@ -10,166 +10,81 @@
     High-Performance Database Indexing
 ```
 
-A fast, memory-mapped B+ tree implementation built for the DBMS course assignment.
-Optimized for maximum throughput on disk-resident datasets.
+A fast, memory-mapped B+ tree implementation for the DBMS course assignment.
 
 ## Quick Start
 
 ```bash
-# Build
 make
-
-# Run tests
 ./bptree_driver
-
-# Benchmark
 ./bptree_driver --benchmark
 ```
 
 ## Requirements
 
-- **OS:** Ubuntu/Linux (tested on Ubuntu 22.04)
-- **Compiler:** g++ with C++17 support
-- **Build:** GNU Make
-
 ```bash
 sudo apt install g++ make
 ```
 
-## Building
+## Runtime Performance (100K Records)
 
-| Target | Command | Description |
-|--------|---------|-------------|
-| Release | `make` | Optimized build (-O3) |
-| Debug | `make debug` | With symbols |
-| Clean | `make clean` | Remove artifacts |
+| Operation | Runtime | Throughput |
+|-----------|---------|------------|
+| **Insert** | **106.57 ms** | 938K ops/sec |
+| **Read** | **1.82 ms** | 55M ops/sec |
+| **Range** | **0.12 ms** | 10K results |
 
-## Benchmarks
-
-Tested on a standard Ubuntu desktop:
+### All Scales
 
 ```
-┌──────────────┬────────────────┬───────────────┬─────────────┐
-│    Scale     │     Insert     │     Read      │    Range    │
-├──────────────┼────────────────┼───────────────┼─────────────┤
-│   1K keys    │  4.1M ops/sec  │  62M ops/sec  │   <0.01ms   │
-│  10K keys    │  3.2M ops/sec  │  50M ops/sec  │    0.01ms   │
-│ 100K keys    │  592K ops/sec  │  43M ops/sec  │    0.22ms   │
-└──────────────┴────────────────┴───────────────┴─────────────┘
+┌──────────────┬─────────────┬────────────┬───────────┐
+│    Scale     │   Insert    │    Read    │   Range   │
+├──────────────┼─────────────┼────────────┼───────────┤
+│   1K keys    │   0.24 ms   │   0.01 ms  │  <0.01 ms │
+│  10K keys    │   2.47 ms   │   0.11 ms  │   0.01 ms │
+│ 100K keys    │  106.57 ms  │   1.82 ms  │   0.12 ms │
+└──────────────┴─────────────┴────────────┴───────────┘
 ```
-
-## Comparison: Main vs Experimental
-
-| Feature | Main Implementation | Experimental |
-|---------|---------------------|--------------|
-| **Internal node search** | Binary search (33ns) | SIMD AVX2 (23ns) |
-| **Speedup** | 2.6x over linear | 3.3x over linear |
-| **Memory allocation** | Standard mmap | HugePages option |
-| **TLB efficiency** | 4KB pages | 2MB pages |
-| **Prefetching** | Single-level | Multi-level |
-
-### Search Algorithm Performance (510 keys)
-
-```
-Linear:  77 ns/search  (baseline)
-Binary:  36 ns/search  (2.1x faster) ← Current
-SIMD:    23 ns/search  (3.3x faster) ← Experimental
-```
-
-**Potential gain from SIMD: ~35% faster reads**
 
 ## API
 
-### Write
-
 ```cpp
-bool writeData(int32_t key, const uint8_t* data);
+bool writeData(int32_t key, const uint8_t* data);  // Insert/update
+const uint8_t* readData(int32_t key);              // Point lookup
+bool deleteData(int32_t key);                      // Remove
+vector<uint8_t*> readRangeData(int32_t lo, int32_t hi, uint32_t& n);  // Range
 ```
 
-Insert or update a 100-byte tuple. Returns `true` on success.
-
-### Read
-
-```cpp
-const uint8_t* readData(int32_t key);
-```
-
-Lookup a key. Returns pointer to data or `nullptr` if not found.
-
-### Delete
-
-```cpp
-bool deleteData(int32_t key);
-```
-
-Remove a key. Returns `true` if key existed.
-
-### Range Query
-
-```cpp
-std::vector<uint8_t*> readRangeData(int32_t lo, int32_t hi, uint32_t& count);
-```
-
-Fetch all tuples in [lo, hi]. Count returned via reference.
-
-## Usage Example
-
-```cpp
-#include "bptree.hpp"
-
-int main() {
-    BPlusTree tree;
-    tree.open("myindex.idx");
-
-    // Insert
-    uint8_t data[100] = {0};
-    tree.writeData(42, data);
-
-    // Read
-    auto result = tree.readData(42);
-    if (result) { /* found */ }
-
-    // Range
-    uint32_t n;
-    auto range = tree.readRangeData(1, 100, n);
-    // n contains result count
-
-    tree.close();
-    return 0;
-}
-```
-
-## Project Layout
+## Project Structure
 
 ```
-.
 ├── src/
-│   ├── bptree.hpp        # Core B+ tree logic
-│   ├── page.hpp          # Node structures
+│   ├── bptree.hpp        # B+ tree implementation
+│   ├── page.hpp          # Page structures (SIMD optimized)
 │   ├── page_manager.hpp  # mmap wrapper
 │   └── driver.cpp        # Tests & benchmarks
 ├── report/
-│   ├── approach.md       # Design decisions
-│   ├── analysis.md       # Performance analysis
-│   └── conclusion.md     # Summary
+│   ├── approach.md
+│   ├── analysis.md
+│   └── conclusion.md
 ├── Makefile
 └── README.md
 ```
 
-## Technical Details
+## Optimizations
 
-- **Page size:** 4096 bytes (OS page aligned)
-- **Leaf capacity:** 39 tuples per node
-- **Internal fanout:** 510 children per node
-- **Tree height:** ~3 levels for 1M records
+- AVX2 SIMD leaf search (8 keys/instruction)
+- Binary search internal nodes (9 vs 510 comparisons)
+- Prefetching during traversal
+- `-O3 -march=native -flto`
 
-### Key Optimizations
+## Specifications
 
-1. Binary search in internal nodes (9 vs 510 comparisons)
-2. CPU prefetch hints during traversal
-3. madvise for kernel page management
-4. Aggressive compiler optimizations
+- **Page size**: 4096 bytes
+- **Leaf capacity**: 39 tuples
+- **Internal fanout**: 510 children
+- **Tree height**: ~3 for 1M records
 
-## Author
+---
 
-Amit Kumar Dhar — DBMS Assignment 2025
+*Amit Kumar Dhar — DBMS Assignment 2025*
