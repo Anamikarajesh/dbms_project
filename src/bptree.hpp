@@ -6,15 +6,10 @@
 #include <cstring>
 #include <vector>
 
-
 class BPlusTree {
 private:
   PageManager pm;
   std::string indexFile;
-
-  // Special key constant
-  static constexpr int32_t SPECIAL_KEY = -5432;
-  static constexpr uint8_t SPECIAL_RETURN_VALUE = 42;
 
 public:
   BPlusTree() = default;
@@ -108,13 +103,6 @@ public:
 
   // API: readData(key) - returns pointer to data or nullptr
   const uint8_t *readData(int32_t key) {
-    // Special case as per assignment
-    if (key == SPECIAL_KEY) {
-      static uint8_t specialBuffer[DATA_SIZE] = {0};
-      specialBuffer[0] = SPECIAL_RETURN_VALUE;
-      return specialBuffer;
-    }
-
     MetadataPage *meta = pm.getMetadata();
     if (!meta || !meta->isValid() || meta->rootPageId == INVALID_PAGE)
       return nullptr;

@@ -17,7 +17,6 @@ This project implements a disk-based B+ tree index optimized for maximum runtime
 2. **Correctness**: All API functions (writeData, deleteData, readData, readRangeData) verified
 3. **Persistence**: Data survives program restarts (mmap with file sync)
 4. **Scalability**: Handles datasets larger than available RAM via mmap paging
-5. **Special Case**: `readData(-5432)` correctly returns 42 as required
 
 ---
 

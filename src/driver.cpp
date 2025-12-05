@@ -41,6 +41,20 @@ public:
   }
 };
 
+// Format time with 2 decimal places
+std::string formatTime(double ms) {
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(2) << ms;
+  return oss.str();
+}
+
+// Format ops/sec with 2 decimal places
+std::string formatOps(double ops) {
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(2) << ops;
+  return oss.str();
+}
+
 // Test utilities
 void fillData(uint8_t *data, int32_t key) {
   std::memset(data, 0, DATA_SIZE);
@@ -125,25 +139,6 @@ bool testBasicOperations(BPlusTree &tree, Logger &log) {
   return allPassed;
 }
 
-bool testSpecialKey(BPlusTree &tree, Logger &log) {
-  log.log("--- Testing Special Key (-5432) ---");
-
-  const uint8_t *result = tree.readData(-5432);
-  if (!result) {
-    log.log("FAIL: readData(-5432) returned NULL");
-    return false;
-  }
-
-  if (result[0] != 42) {
-    log.log("FAIL: readData(-5432) returned " + std::to_string(result[0]) +
-            " instead of 42");
-    return false;
-  }
-
-  log.log("PASS: readData(-5432) correctly returns 42");
-  return true;
-}
-
 bool testBulkInsert(BPlusTree &tree, Logger &log, int count) {
   log.log("--- Testing Bulk Insert (" + std::to_string(count) +
           " records) ---");
@@ -160,13 +155,14 @@ bool testBulkInsert(BPlusTree &tree, Logger &log, int count) {
   }
 
   auto end = std::chrono::high_resolution_clock::now();
-  auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+  auto durationUs =
+      std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+          .count();
+  double durationMs = durationUs / 1000.0;
+  double opsPerSec = (count * 1000000.0) / std::max(1LL, durationUs);
 
-  double opsPerSec = (count * 1000.0) / std::max(1LL, duration.count());
   log.log("PASS: Inserted " + std::to_string(count) + " records in " +
-          std::to_string(duration.count()) + "ms (" +
-          std::to_string(static_cast<int>(opsPerSec)) + " ops/sec)");
+          formatTime(durationMs) + "ms (" + formatOps(opsPerSec) + " ops/sec)");
 
   return true;
 }
@@ -189,13 +185,15 @@ bool testRandomReads(BPlusTree &tree, Logger &log, int count, int maxKey) {
   }
 
   auto end = std::chrono::high_resolution_clock::now();
-  auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+  auto durationUs =
+      std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+          .count();
+  double durationMs = durationUs / 1000.0;
+  double opsPerSec = (count * 1000000.0) / std::max(1LL, durationUs);
 
-  double opsPerSec = (count * 1000.0) / std::max(1LL, duration.count());
   log.log("PASS: " + std::to_string(found) + "/" + std::to_string(count) +
-          " reads successful in " + std::to_string(duration.count()) + "ms (" +
-          std::to_string(static_cast<int>(opsPerSec)) + " ops/sec)");
+          " reads successful in " + formatTime(durationMs) + "ms (" +
+          formatOps(opsPerSec) + " ops/sec)");
 
   return true;
 }
@@ -210,11 +208,13 @@ bool testRangeQuery(BPlusTree &tree, Logger &log, int lower, int upper) {
   auto results = tree.readRangeData(lower, upper, n);
 
   auto end = std::chrono::high_resolution_clock::now();
-  auto duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  auto durationUs =
+      std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+          .count();
+  double durationMs = durationUs / 1000.0;
 
   log.log("PASS: Range query returned " + std::to_string(n) + " results in " +
-          std::to_string(duration.count()) + " microseconds");
+          formatTime(durationMs) + "ms");
 
   return true;
 }
@@ -259,27 +259,33 @@ void runBenchmark(BPlusTree &tree, Logger &log) {
     tree.open("benchmark.idx");
 
     uint8_t data[DATA_SIZE];
-    auto start = std::chrono::high_resolution_clock::now();
 
+    // Insert benchmark
+    auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < size; i++) {
       fillData(data, i);
       tree.writeData(i, data);
     }
-
     auto insertEnd = std::chrono::high_resolution_clock::now();
-    auto insertMs =
-        std::chrono::duration_cast<std::chrono::milliseconds>(insertEnd - start)
+    auto insertUs =
+        std::chrono::duration_cast<std::chrono::microseconds>(insertEnd - start)
             .count();
+    double insertMs = insertUs / 1000.0;
+    double insertOps = (size * 1000000.0) / std::max(1LL, insertUs);
 
+    // Read benchmark (sequential)
     start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < size; i++) {
       tree.readData(i);
     }
     auto readEnd = std::chrono::high_resolution_clock::now();
-    auto readMs =
-        std::chrono::duration_cast<std::chrono::milliseconds>(readEnd - start)
+    auto readUs =
+        std::chrono::duration_cast<std::chrono::microseconds>(readEnd - start)
             .count();
+    double readMs = readUs / 1000.0;
+    double readOps = (size * 1000000.0) / std::max(1LL, readUs);
 
+    // Range query benchmark
     start = std::chrono::high_resolution_clock::now();
     uint32_t n;
     tree.readRangeData(0, size / 10, n);
@@ -287,13 +293,13 @@ void runBenchmark(BPlusTree &tree, Logger &log) {
     auto rangeUs =
         std::chrono::duration_cast<std::chrono::microseconds>(rangeEnd - start)
             .count();
+    double rangeMs = rangeUs / 1000.0;
 
-    log.log("Insert: " + std::to_string(insertMs) + "ms (" +
-            std::to_string(size * 1000 / std::max(1LL, insertMs)) +
+    log.log("Insert: " + formatTime(insertMs) + "ms (" + formatOps(insertOps) +
             " ops/sec)");
-    log.log("Read:   " + std::to_string(readMs) + "ms (" +
-            std::to_string(size * 1000 / std::max(1LL, readMs)) + " ops/sec)");
-    log.log("Range:  " + std::to_string(rangeUs) + "us (" + std::to_string(n) +
+    log.log("Read:   " + formatTime(readMs) + "ms (" + formatOps(readOps) +
+            " ops/sec)");
+    log.log("Range:  " + formatTime(rangeMs) + "ms (" + std::to_string(n) +
             " results)");
   }
 }
@@ -325,7 +331,6 @@ int main(int argc, char *argv[]) {
 
   bool allPassed = true;
   allPassed &= testBasicOperations(tree, log);
-  allPassed &= testSpecialKey(tree, log);
 
   tree.close();
   std::remove(indexFile.c_str());
